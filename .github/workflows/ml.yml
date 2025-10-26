@@ -148,32 +148,60 @@ jobs:
     if: always()
     
     steps:
-      - name: Display summary
+      - name: Train model
         run: |
           echo "=========================================="
-          echo "Pipeline Summary"
-          echo "=========================================="
-          echo "Commit: ${{ github.sha }}"
-          echo "Actor: ${{ github.actor }}"
-          echo "Branch: ${{ github.ref_name }}"
+          echo "DEBUGGING TRAINING"
           echo "=========================================="
           
-          if [ "${{ needs.lint.result }}" == "success" ]; then
-            echo "✓ Lint: PASSED"
+          echo "Working directory:"
+          pwd
+          
+          echo ""
+          echo "Directory contents:"
+          ls -la
+          
+          echo ""
+          echo "Python info:"
+          which python
+          python --version
+          
+          echo ""
+          echo "Packages:"
+          pip list | grep -E "(pandas|sklearn|joblib)"
+          
+          echo ""
+          echo "Dataset check:"
+          if [ -f "data/raw/winequality-red.csv" ]; then
+            echo "Dataset exists"
+            wc -l data/raw/winequality-red.csv
+            head -3 data/raw/winequality-red.csv
           else
-            echo "✗ Lint: FAILED"
+            echo "ERROR: Dataset not found"
+            ls -la data/raw/
+            exit 1
           fi
           
-          if [ "${{ needs.test.result }}" == "success" ]; then
-            echo "✓ Tests: PASSED"
-          else
-            echo "✗ Tests: FAILED"
-          fi
-          
-          if [ "${{ needs.train.result }}" == "success" ]; then
-            echo "✓ Training: PASSED"
-          else
-            echo "✗ Training: FAILED"
-          fi
-          
+          echo ""
           echo "=========================================="
+          echo "RUNNING TRAINING..."
+          echo "=========================================="
+          
+          python src/train.py
+          
+          TRAIN_EXIT=$?
+          
+          echo ""
+          echo "=========================================="
+          echo "Training exit code: $TRAIN_EXIT"
+          echo "=========================================="
+          
+          if [ $TRAIN_EXIT -ne 0 ]; then
+            echo "Training failed!"
+            exit 1
+          fi
+          
+          echo ""
+          echo "Files after training:"
+          ls -la models/ || echo "models/ not found"
+          ls -la plots/ || echo "plots/ not found"
