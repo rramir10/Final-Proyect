@@ -257,8 +257,8 @@ Distribuido bajo licencia MIT. Ver `LICENSE` para más información.
 ## 👥 Autor
 
 **Tu Nombre**
-- GitHub: [@tu-usuario](https://github.com/tu-usuario)
-- Email: tu.email@ejemplo.com
+- GitHub: [@rramir10](https://github.com/rramir10)
+- Email: rramire82391@universidadean.edu.co
 
 ---
 
@@ -277,5 +277,3 @@ Distribuido bajo licencia MIT. Ver `LICENSE` para más información.
 - [Documentación](https://github.com/TU_USUARIO/wine-quality-mlops/wiki)
 
 ---
-
-⭐ Si este proyecto te fue útil, considera darle una estrella en GitHub!
