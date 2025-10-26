@@ -1,21 +1,21 @@
-name: ML Pipeline - Wine Quality
+name: ML Pipeline - Wine Quality Classification
 
 on:
   push:
-    branches: 
-      - main
-      - develop
+    branches: [main, develop]
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 env:
   PYTHON_VERSION: '3.9'
 
 jobs:
+  # ==========================================================================
+  # JOB 1: Linting
+  # ==========================================================================
   lint:
-    name: Code Quality Check
+    name: Code Quality
     runs-on: ubuntu-latest
     
     steps:
@@ -28,19 +28,22 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
       
-      - name: Install linting dependencies
+      - name: Install linting tools
         run: |
           python -m pip install --upgrade pip
           pip install flake8 black
       
       - name: Run Flake8
         run: |
-          flake8 src/ --max-line-length=100 --exclude=__pycache__ --count --statistics || true
+          flake8 src/ tests/ --max-line-length=100 --exclude=__pycache__ --count --statistics || true
       
-      - name: Check formatting with Black
+      - name: Check Black formatting
         run: |
-          black --check src/ --line-length=100 || true
+          black --check src/ tests/ --line-length=100 || true
 
+  # ==========================================================================
+  # JOB 2: Tests
+  # ==========================================================================
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -65,8 +68,11 @@ jobs:
         run: |
           pytest tests/ -v --cov=src --cov-report=term-missing || true
 
+  # ==========================================================================
+  # JOB 3: Train Model
+  # ==========================================================================
   train:
-    name: Train Model
+    name: Train ML Model
     runs-on: ubuntu-latest
     needs: [lint, test]
     
@@ -84,48 +90,84 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          echo "Installed packages:"
+          pip list | grep -E "(pandas|numpy|scikit|xgboost|mlflow)"
       
       - name: Create directories
         run: |
           mkdir -p data/raw data/processed models mlruns plots logs
+          echo "Directory structure created"
+          ls -la
       
       - name: Download dataset
         run: |
+          echo "Downloading Wine Quality dataset..."
           curl -o data/raw/winequality-red.csv \
             "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
           
           if [ -f "data/raw/winequality-red.csv" ]; then
-            echo "Dataset downloaded successfully"
+            echo "✓ Dataset downloaded successfully"
             wc -l data/raw/winequality-red.csv
+            head -3 data/raw/winequality-red.csv
           else
-            echo "ERROR: Dataset download failed"
+            echo "✗ Dataset download failed"
             exit 1
           fi
       
+      - name: Verify environment
+        run: |
+          echo "=========================================="
+          echo "Environment Information"
+          echo "=========================================="
+          python --version
+          pip --version
+          python -c "import pandas; print(f'pandas: {pandas.__version__}')"
+          python -c "import sklearn; print(f'sklearn: {sklearn.__version__}')"
+          python -c "import xgboost; print(f'xgboost: {xgboost.__version__}')"
+          echo "=========================================="
+      
       - name: Train model
         run: |
-          echo "Starting model training..."
-          python src/train.py
-          echo "Training completed"
+          echo "=========================================="
+          echo "Starting Model Training"
+          echo "=========================================="
+          python src/train.py 2>&1 | tee training_output.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "✗ Training failed"
+            exit $EXIT_CODE
+          fi
+          echo "✓ Training completed successfully"
       
       - name: Verify artifacts
         run: |
           echo "Checking generated files..."
           
+          # Verify model
           if [ -f "models/best_model.pkl" ]; then
             echo "✓ Model found"
             ls -lh models/best_model.pkl
           else
             echo "✗ Model not found"
+            echo "Contents of models directory:"
+            ls -la models/ || echo "models/ directory does not exist"
             exit 1
           fi
           
-          if [ -d "mlruns" ]; then
-            echo "✓ MLflow runs found"
-            find mlruns -type f | head -10
+          # Verify scaler
+          if [ -f "models/scaler.pkl" ]; then
+            echo "✓ Scaler found"
           fi
           
-          if [ -d "plots" ]; then
+          # Verify MLflow
+          if [ -d "mlruns" ] && [ "$(ls -A mlruns)" ]; then
+            echo "✓ MLflow runs found"
+            find mlruns -name "*.yaml" | head -5
+          fi
+          
+          # Verify plots
+          if [ -d "plots" ] && [ "$(ls -A plots)" ]; then
             echo "✓ Plots found"
             ls -lh plots/
           fi
@@ -139,8 +181,21 @@ jobs:
             models/
             mlruns/
             plots/
+            training_output.log
           retention-days: 30
+      
+      - name: Upload logs on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failure-logs-${{ github.sha }}
+          path: |
+            training_output.log
+          retention-days: 7
 
+  # ==========================================================================
+  # JOB 4: Summary
+  # ==========================================================================
   summary:
     name: Pipeline Summary
     runs-on: ubuntu-latest
@@ -148,14 +203,15 @@ jobs:
     if: always()
     
     steps:
-      - name: Display summary
+      - name: Display results
         run: |
           echo "=========================================="
-          echo "Pipeline Summary"
+          echo "Pipeline Execution Summary"
           echo "=========================================="
           echo "Commit: ${{ github.sha }}"
           echo "Actor: ${{ github.actor }}"
           echo "Branch: ${{ github.ref_name }}"
+          echo "Date: $(date)"
           echo "=========================================="
           
           if [ "${{ needs.lint.result }}" == "success" ]; then
