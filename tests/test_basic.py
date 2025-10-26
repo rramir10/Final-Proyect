@@ -77,3 +77,4 @@ def test_data_loading_simulation():
     
     assert len(df) == 100
     assert 'target' in df.columns
+    
